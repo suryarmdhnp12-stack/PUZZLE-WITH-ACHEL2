@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Puzzle Kita ❤️ — Main Jigsaw Berdua</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <!-- PeerJS untuk koneksi Multiplayer Real-Time antar 2 Device tanpa perlu setup server rumit -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+  <!-- ================= TOP HUD BAR ================= -->
+  <header class="hud-bar" id="hudBar">
+    <div class="hud-left">
+      <div class="brand-logo" id="openLobbyBtn" title="Pengaturan Room">
+        <span class="logo-icon">🧩</span>
+        <span class="logo-text">Puzzle Kita</span>
+      </div>
+
+      <div class="room-badge" id="roomBadge" title="Klik untuk salin Link Undangan">
+        <span class="status-dot" id="connectionDot"></span>
+        <span class="room-label">Room:</span>
+        <strong id="roomCodeDisplay">OFFLINE</strong>
+        <button class="icon-mini-btn" id="copyInviteBtn" title="Salin Link Undangan">📋 Salin Link</button>
+        <button class="icon-mini-btn" id="leaveRoomBtn" title="Keluar atau Ganti Room" style="margin-left: 4px;">🚪 Ganti</button>
+      </div>
+
+      <div class="players-pill" id="playersPill">
+        <span id="player1Tag" class="player-tag me">Kamu</span>
+        <span class="heart-divider">❤️</span>
+        <span id="player2Tag" class="player-tag partner waiting">Menunggu Pacar...</span>
+      </div>
+    </div>
+
+    <div class="hud-center">
+      <div class="progress-wrapper">
+        <div class="progress-info">
+          <span id="progressText">0 / 100 keping (0%)</span>
+          <span class="timer-badge" id="timerDisplay">⏱️ 00:00</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-right">
+      <div class="theme-dropdown-container">
+        <button class="hud-btn" id="themeSelectorBtn" title="Ganti Suasana Background Meja">
+          🎨 <span class="btn-label" id="themeBtnLabel">Tema: Kabin Kayu</span>
+        </button>
+        <div class="theme-menu hidden" id="themeMenu">
+          <div class="theme-menu-title">Pilih Suasana Meja:</div>
+          <button class="theme-menu-item active" data-theme="cabin">
+            <img src="assets/bg-cabin.jpg" alt="Kabin" />
+            <span>🌲 Kabin Kayu Pinus</span>
+          </button>
+          <button class="theme-menu-item" data-theme="picnic">
+            <img src="assets/bg-picnic.jpg" alt="Piknik" />
+            <span>🧺 Piknik Rumput</span>
+          </button>
+          <button class="theme-menu-item" data-theme="beach">
+            <img src="assets/bg-beach.jpg" alt="Pantai" />
+            <span>🏖️ Pantai Tropis</span>
+          </button>
+          <button class="theme-menu-item" data-theme="galaxy">
+            <img src="assets/bg-galaxy.jpg" alt="Galaksi" />
+            <span>🌌 Malam Berbintang</span>
+          </button>
+        </div>
+      </div>
+      <button class="hud-btn" id="toggleEdgeFilterBtn" title="Tampilkan kepingan pinggir saja untuk merangkai bingkai dulu">
+        🖼️ <span class="btn-label">Filter Pinggir</span>
+      </button>
+      <button class="hud-btn" id="organizePiecesBtn" title="Rapikan kepingan yang belum terpasang di sekeliling papan">
+        ✨ <span class="btn-label">Rapikan Meja</span>
+      </button>
+      <button class="hud-btn" id="toggleGhostBtn" title="Ubah transparansi gambar bayangan di papan">
+        👁️ <span class="btn-label" id="ghostBtnLabel">Bayangan: 20%</span>
+      </button>
+      <button class="hud-btn primary" id="openSetupBtn">
+        📸 <span class="btn-label">Ganti Foto / Level</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= MAIN WOODEN TABLE WORKSPACE ================= -->
+  <main class="table-viewport" id="tableViewport">
+    <canvas id="puzzleCanvas"></canvas>
+
+    <!-- Floating Partner Cursor Overlay -->
+    <div id="partnerCursor" class="partner-cursor hidden">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="#ff4d79" stroke="#ffffff" stroke-width="2">
+        <path d="M4 3l16 7-7 2-2 7-7-16z"/>
+      </svg>
+      <span class="partner-cursor-name" id="partnerCursorName">Sayang ❤️</span>
+    </div>
+
+    <!-- Floating 3D Puzzle Box (Seperti kotak referensi di pojok kiri atas foto) -->
+    <div class="puzzle-box-widget" id="puzzleBoxWidget">
+      <div class="box-header" id="boxHeaderDrag">
+        <span class="box-title">📦 Kotak Referensi</span>
+        <div class="box-controls">
+          <button class="box-mini-btn" id="minimizeBoxBtn" title="Kecilkan/Besarkan">_</button>
+        </div>
+      </div>
+      <div class="box-body" id="boxBody">
+        <div class="box-lid">
+          <img id="boxPreviewImg" src="" alt="Preview Puzzle" />
+          <div class="mystery-cover hidden" id="mysteryCover">
+            <span class="mystery-icon">🎁</span>
+            <p>Foto Kejutan Rahasia!</p>
+            <small>Susun kepingannya untuk melihat foto ini</small>
+          </div>
+          <div class="box-SideBadge">
+            <span class="box-sub">JIGSAW PUZZLE</span>
+            <strong id="boxPieceCountBadge">100 PCS</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Reaction Emojis Container -->
+    <div id="floatingReactionsContainer" class="floating-reactions-container"></div>
+
+    <!-- Bottom Emoji Reaction Bar -->
+    <div class="reaction-dock">
+      <button class="react-btn" data-emoji="❤️" title="Kirim Cinta">❤️</button>
+      <button class="react-btn" data-emoji="🥰" title="Gemas">🥰</button>
+      <button class="react-btn" data-emoji="🔥" title="Semangat!">🔥</button>
+      <button class="react-btn" data-emoji="👏" title="Kerja Bagus!">👏</button>
+      <button class="react-btn" data-emoji="😂" title="Lucu">😂</button>
+      <button class="react-btn" data-emoji="🎉" title="Hore!">🎉</button>
+    </div>
+
+    <!-- Bottom-Right Camera / Zoom Controls -->
+    <div class="camera-dock">
+      <button class="cam-btn" id="panModeToggleBtn" title="Mode Geser Layar (Berguna di HP)">✋ Geser Meja: OFF</button>
+      <button class="cam-btn" id="zoomOutBtn" title="Perkecil Meja (-)">➖</button>
+      <span class="zoom-level-text" id="zoomLevelText">100%</span>
+      <button class="cam-btn" id="zoomInBtn" title="Perbesar Meja (+)">➕</button>
+      <button class="cam-btn" id="resetViewBtn" title="Tampilkan Seluruh Meja">🎯 Tengah</button>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+  </main>
+
+  <!-- ================= MODAL 1: LOBBY / ROOM CONNECTION ================= -->
+  <div class="modal-backdrop" id="lobbyModal">
+    <div class="modal-card">
+      <div class="modal-header with-close">
+        <div>
+          <h2>🧩 Selamat Datang di Puzzle Kita</h2>
+          <p>Mainkan puzzle kepingan foto kenangan bersama pasanganmu secara real-time dari 2 perangkat berbeda!</p>
+        </div>
+        <button class="close-modal-btn" id="closeLobbyModalBtn" title="Tutup">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="playerNameInput">Nama Panggilanmu</label>
+          <input type="text" id="playerNameInput" placeholder="Contoh: Mas / Ayang / Bubu" maxlength="18" value="Sayang" />
+        </div>
+
+        <div class="lobby-tabs">
+          <div class="lobby-option-card host-card">
+            <div class="card-badge">Langkah 1 (Kamu)</div>
+            <h3>✨ Buat Room Baru</h3>
+            <p>Buat meja permainan, pilih foto & jumlah kepingan, lalu bagikan kode/link ke pacarmu.</p>
+            <div class="custom-code-row">
+              <input type="text" id="customRoomInput" placeholder="Kode Room (Contoh: KITA26)" maxlength="12" />
+            </div>
+            <button class="btn primary-btn full-width" id="createRoomBtn">Buat Room & Siapkan Kejutan 🚀</button>
+          </div>
+
+          <div class="lobby-option-card join-card">
+            <div class="card-badge partner-badge">Langkah 2 (Pacarmu)</div>
+            <h3>💌 Gabung ke Room</h3>
+            <p>Masukkan Kode Room yang dibuat pasanganmu untuk masuk ke meja yang sama.</p>
+            <div class="custom-code-row">
+              <input type="text" id="joinRoomInput" placeholder="Masukkan Kode Room..." maxlength="12" />
+            </div>
+            <button class="btn secondary-btn full-width" id="joinRoomBtn">Gabung Sekarang 🤝</button>
+          </div>
+        </div>
+
+        <div class="solo-divider">
+          <span>atau ingin mencoba dulu sendiri?</span>
+        </div>
+        <button class="btn ghost-btn full-width" id="playSoloBtn">🎮 Coba Main / Atur Puzzle Dulu (Tanpa Room)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 2: SETUP FOTO, TINGKAT KESULITAN & KEJUTAN ================= -->
+  <div class="modal-backdrop hidden" id="setupModal">
+    <div class="modal-card large-modal">
+      <div class="modal-header with-close">
+        <div>
+          <h2>📸 Atur Foto Puzzle & Kejutan</h2>
+          <p>Pilih foto kalian, tentukan jumlah kepingan, dan tulis pesan kejutan saat puzzle selesai!</p>
+        </div>
+        <button class="close-modal-btn" id="closeSetupModalBtn">✕</button>
+      </div>
+
+      <div class="modal-body setup-grid">
+        <!-- Left Column: Photo Upload & Presets -->
+        <div class="setup-col">
+          <label class="section-label">1. Pilih / Upload Foto Kalian</label>
+          <div class="upload-dropzone" id="uploadDropzone">
+            <input type="file" id="photoFileInput" accept="image/*" hidden />
+            <img id="setupPreviewImg" src="" alt="Preview" />
+            <div class="upload-overlay">
+              <span>📷 Klik atau Tarik Foto Kalian ke Sini</span>
+              <small>Otomatis dipotong menjadi kepingan Jigsaw & dikirim ke layar pasanganmu</small>
+            </div>
+          </div>
+
+          <div class="sample-photos-row">
+            <span class="sample-label">Atau coba gambar contoh:</span>
+            <div class="sample-btns">
+              <button class="sample-btn active" data-sample="sunset">🌅 Sunset Romantis</button>
+              <button class="sample-btn" data-sample="picnic">🧺 Piknik Taman</button>
+              <button class="sample-btn" data-sample="starnight">🌌 Malam Berbintang</button>
+            </div>
+          </div>
+
+          <div class="mystery-toggle-box">
+            <label class="checkbox-label">
+              <input type="checkbox" id="mysteryModeCheckbox" />
+              <div>
+                <strong>🎁 Mode Foto Misteri (Sembunyikan Contekan)</strong>
+                <p>Jika dicentang, gambar di Kotak Referensi akan disembunyikan supaya pacarmu penasaran foto apa yang sedang dirangkai!</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Right Column: Difficulty & Surprise Message -->
+        <div class="setup-col">
+          <label class="section-label">2. Pilih Suasana / Background Meja</label>
+          <div class="theme-cards-grid">
+            <div class="theme-card active" data-theme="cabin">
+              <img src="assets/bg-cabin.jpg" alt="Kabin Kayu" />
+              <span>🌲 Kabin Pinus</span>
+            </div>
+            <div class="theme-card" data-theme="picnic">
+              <img src="assets/bg-picnic.jpg" alt="Piknik Rumput" />
+              <span>🧺 Piknik Rumput</span>
+            </div>
+            <div class="theme-card" data-theme="beach">
+              <img src="assets/bg-beach.jpg" alt="Pantai Tropis" />
+              <span>🏖️ Pantai Tropis</span>
+            </div>
+            <div class="theme-card" data-theme="galaxy">
+              <img src="assets/bg-galaxy.jpg" alt="Malam Galaksi" />
+              <span>🌌 Malam Berbintang</span>
+            </div>
+          </div>
+
+          <label class="section-label" style="margin-top: 14px;">3. Pilih Tingkat Kesulitan (Jumlah Kepingan)</label>
+          <div class="difficulty-presets">
+            <button class="diff-card" data-pieces="35">
+              <span class="diff-title">🌱 Santai</span>
+              <strong class="diff-count">~35 Keping</strong>
+              <small>Cepat & Pemanasan</small>
+            </button>
+            <button class="diff-card active" data-pieces="100">
+              <span class="diff-title">🔥 Seru</span>
+              <strong class="diff-count">~100 Keping</strong>
+              <small>Pas untuk Berdua</small>
+            </button>
+            <button class="diff-card" data-pieces="200">
+              <span class="diff-title">💎 Tantangan</span>
+              <strong class="diff-count">~200 Keping</strong>
+              <small>Butuh Kerja Sama</small>
+            </button>
+            <button class="diff-card" data-pieces="300">
+              <span class="diff-title">👑 Master</span>
+              <strong class="diff-count">~300 Keping</strong>
+              <small>Persis Seperti di Foto!</small>
+            </button>
+          </div>
+
+          <div class="custom-slider-box">
+            <div class="slider-header">
+              <span>Atur Jumlah Kepingan Manual:</span>
+              <strong id="sliderPieceReadout">100 Keping (10 × 10)</strong>
+            </div>
+            <input type="range" id="pieceCountSlider" min="16" max="320" step="4" value="100" />
+            <div class="slider-ticks">
+              <span>16 pcs</span>
+              <span>100 pcs</span>
+              <span>200 pcs</span>
+              <span>320 pcs</span>
+            </div>
+          </div>
+
+          <label class="section-label" style="margin-top: 14px;">4. 💌 Pesan Kejutan (Muncul Saat Puzzle Selesai 100%)</label>
+          <div class="surprise-form">
+            <input type="text" id="surpriseTitleInput" placeholder="Judul Kejutan (Contoh: Selamat Anniversary / Kejutan Buat Kamu ❤️)" value="Yeay! Kita Berhasil Menyusunnya Bersama ❤️" />
+            <textarea id="surpriseMessageInput" rows="3" placeholder="Tulis pesan manis untuk pacarmu...">Terima kasih sudah selalu sabar dan melengkapi setiap kepingan hariku, persis seperti puzzle yang baru saja kita rangkai berdua ini. Aku sayang kamu!</textarea>
+            <input type="text" id="surpriseVoucherInput" placeholder="Hadiah/Voucher Opsional (Contoh: 🎟️ Voucher Dinner & Es Krim Akhir Pekan Ini!)" value="🎟️ Hadiah Spesial: Traktir Makanan Favoritmu Minggu Ini!" />
+          </div>
+
+          <button class="btn primary-btn full-width start-puzzle-btn" id="applyPuzzleSetupBtn">
+            🧩 Buat & Acak Kepingan Puzzle Sekarang!
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 3: VICTORY & SURPRISE REVEAL ================= -->
+  <div class="modal-backdrop hidden" id="victoryModal">
+    <canvas id="confettiCanvas"></canvas>
+    <div class="victory-card">
+      <div class="victory-header">
+        <span class="victory-badge">🎉 PUZZLE SELESAI 100%! 🎉</span>
+        <h2 id="victoryMainTitle">Kerja Sama yang Sempurna!</h2>
+        <p id="victoryStatsText">Diselesaikan dalam waktu 05:20 • 100 Keping Jigsaw</p>
+      </div>
+
+      <div class="victory-photo-frame">
+        <img id="victoryFinalImg" src="" alt="Completed Puzzle" />
+      </div>
+
+      <!-- Envelope Step before revealing the message -->
+      <div class="envelope-prompt" id="envelopePrompt">
+        <button class="open-envelope-btn" id="openEnvelopeBtn">
+          💌 Ada Pesan Kejutan Untukmu — Klik Untuk Buka!
+        </button>
+      </div>
+
+      <!-- Revealed Romantic Letter -->
+      <div class="love-letter-box hidden" id="loveLetterBox">
+        <h3 id="letterTitleDisplay">Yeay! Kita Berhasil Menyusunnya Bersama ❤️</h3>
+        <p id="letterBodyDisplay"></p>
+        <div class="voucher-ticket" id="voucherTicketDisplay">
+          <span id="voucherTextDisplay"></span>
+        </div>
+      </div>
+
+      <div class="victory-actions">
+        <button class="btn secondary-btn" id="closeVictoryBtn">Lihat Meja</button>
+        <button class="btn primary-btn" id="playAgainBtn">📸 Main Lagi dengan Foto Baru</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/sound.js"></script>
+  <script src="js/jigsaw-engine.js"></script>
+  <script src="js/multiplayer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
